@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI図面審査システム - 現場仕様マスター版</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 800px; }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 5px; }
+        .subtitle { text-align: center; color: #7f8c8d; font-size: 14px; margin-bottom: 30px; }
+        
+        .settings-card { background-color: #fcfcfc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 20px; margin-bottom: 25px; }
+        .settings-card h3 { margin-top: 0; color: #34495e; font-size: 16px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
+        .checkbox-group { margin: 15px 0; }
+        .checkbox-item { display: flex; align-items: flex-start; margin-bottom: 10px; cursor: pointer; }
+        .checkbox-item input { margin-top: 3px; margin-right: 10px; }
+        .checkbox-label { font-size: 14px; color: #4a5568; line-height: 1.4; }
+        .label-title { font-weight: bold; font-size: 14px; color: #2d3748; display: block; margin-top: 15px; margin-bottom: 5px; }
+        .upload-box { background-color: #f7fafc; border: 2px dashed #cbd5e0; padding: 15px; border-radius: 4px; margin-bottom: 15px; }
+        
+        .btn-primary { width: 100%; background-color: #3182ce; color: white; border: none; padding: 14px; font-size: 16px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-primary:hover { background-color: #2b6cb0; }
+        
+        .btn-download { width: 100%; background-color: #e67e22; color: white; border: none; padding: 12px; font-size: 16px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-bottom: 20px; display: none; text-align: center; text-decoration: none; box-sizing: border-box; }
+        .btn-download:hover { background-color: #d35400; }
+        
+        /* 模範解答表示ボタンのスタイル */
+        .btn-example { background-color: #2b6cb0; color: white; border: none; font-size: 12px; padding: 6px 12px; width: auto; display: inline-block; border-radius: 4px; cursor: pointer; margin-top: 10px; font-weight: bold; }
+        .btn-example:hover { background-color: #1a446c; }
+
+        button:disabled { background-color: #95a5a6; cursor: not-allowed; }
+        
+        #result-area, #loading { display: none; margin-top: 20px; }
+        .result-box { margin-bottom: 15px; padding: 15px; background-color: #f8f9fa; border-radius: 4px; border-left: 5px solid #ccc; }
+        .result-box.ok { border-left-color: #2ecc71; }
+        .result-box.ng { border-left-color: #e74c3c; }
+        .overall { text-align: center; font-size: 24px; font-weight: bold; }
+        .overall.pass { color: #2ecc71; }
+        .overall.fail { color: #e74c3c; }
+        .advice-box { margin-top: 10px; padding: 10px 15px; background-color: #eef7fc; border: 1px solid #bce1f4; border-radius: 4px; color: #2e6e9e; font-size: 14px; display: none; }
+
+        .image-wrapper { position: relative; display: inline-block; width: 100%; margin-top: 20px; border: 1px solid #ddd; }
+        #drawing-preview { width: 100%; display: block; }
+        .error-box { position: absolute; border: 3px solid #e74c3c; background-color: rgba(231, 76, 60, 0.15); pointer-events: none; }
+        .error-label { position: absolute; background-color: #e74c3c; color: white; font-size: 12px; font-weight: bold; padding: 2px 6px; top: -22px; left: -3px; white-space: nowrap; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>AI図面審査システム</h1>
+    <div class="subtitle">標準チェックリスト × 自社製図マニュアルPDF自動連携エンジン</div>
+    
+    <div class="settings-card">
+        <h3>⚙️ 審査ルールの定義</h3>
+        <span class="label-title">1. 標準チェック項目の選択:</span>
+        <div class="checkbox-group">
+            <label class="checkbox-item">
+                <input type="checkbox" id="rule-title" value="表題欄の記入漏れ（図番、図名、材質、尺度、設計者の空欄チェック）" checked>
+                <div class="checkbox-label"><strong>表題欄の記入漏れチェック</strong></div>
+            </label>
+            <label class="checkbox-item">
+                <input type="checkbox" id="rule-dim" value="二重寸法チェック（正面図、平面図、側面図間での寸法の重複記入の回避）" checked>
+                <div class="checkbox-label"><strong>二重寸法（重複）チェック</strong></div>
+            </label>
+        </div>
+
+        <span class="label-title">2. 社内製図マニュアルの読み込み:</span>
+        <div class="upload-box">
+            <input type="file" id="manual-input" accept=".pdf">
+        </div>
+    </div>
+
+    <div class="upload-box">
+        <span class="label-title" style="margin-top:0;">3. 審査する図面（PDFまたは画像）:</span>
+        <input type="file" id="file-input" accept=".pdf, .png, .jpg, .jpeg">
+    </div>
+    
+    <button id="submit-btn" class="btn-primary">指定条件でAI図面審査を実行</button>
+    <div id="loading" style="text-align:center; color:#7f8c8d; font-weight:bold; margin-top:15px;">AIが図面とルールを解析してPDFを生成中...</div>
+
+    <div id="result-area">
+        <a id="download-btn" class="btn-download">📥 修正指示入りPDFをダウンロード</a>
+
+        <div class="overall" id="overall-result" style="margin-bottom: 20px;">総合判定: -</div>
+        
+        <div class="result-box" id="title-block-result">
+            <strong>【表題欄チェック結果】</strong> <span class="status"></span>
+            <p class="details" style="margin: 5px 0 0;"></p>
+            <div class="advice-box">💡 <strong>改善提案:</strong> <span class="text"></span></div>
+        </div>
+        
+        <div class="result-box" id="dimensions-result">
+            <strong>【二重寸法チェック結果】</strong> <span class="status"></span>
+            <p class="details" style="margin: 5px 0 0;"></p>
+            <div class="advice-box">
+                💡 <strong>改善提案:</strong> <span class="text"></span>
+                <hr style="border: 0; border-top: 1px solid #bce1f4; margin: 10px 0;">
+                
+                <button type="button" class="btn-example" onclick="toggleExample()">
+                    🔍 模範解答（正しい寸法配置の見本）を表示/非表示
+                </button>
+                
+                <div id="example-image-area" style="display: none; margin-top: 10px; text-align: center;">
+                    <p style="font-size: 12px; margin: 5px 0; color: #4a5568;">【お手本】主要な寸法はすべて正面図に集約し、他図面との重複を避けます</p>
+                    <img src="https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80" alt="模範解答" style="max-width: 100%; border: 1px solid #bce1f4; border-radius: 4px;">
+                </div>
+            </div>
+        </div>
+        
+        <div class="image-wrapper" id="image-wrapper">
+            <img id="drawing-preview" src="" alt="図面のプレビュー">
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentPdfBase64 = null;
+
+    // お手本画像の開閉切り替え関数
+    function toggleExample() {
+        const area = document.getElementById('example-image-area');
+        if (area.style.display === 'none' || area.style.display === '') {
+            area.style.display = 'block';
+        } else {
+            area.style.display = 'none';
+        }
+    }
+
+    document.getElementById('submit-btn').addEventListener('click', async () => {
+        const fileInput = document.getElementById('file-input');
+        const file = fileInput.files[0];
+        if (!file) { alert('審査する図面を選択してください。'); return; }
+
+        let selectedRules = [];
+        if (document.getElementById('rule-title').checked) selectedRules.push(document.getElementById('rule-title').value);
+        if (document.getElementById('rule-dim').checked) selectedRules.push(document.getElementById('rule-dim').value);
+        const customRulesText = selectedRules.join('\n');
+
+        const manualInput = document.getElementById('manual-input');
+        const manualFile = manualInput.files[0];
+
+        const submitBtn = document.getElementById('submit-btn');
+        const loading = document.getElementById('loading');
+        const resultArea = document.getElementById('result-area');
+        const downloadBtn = document.getElementById('download-btn');
+        const imageWrapper = document.getElementById('image-wrapper');
+        
+        document.querySelectorAll('.error-box').forEach(e => e.remove());
+        downloadBtn.style.display = 'none';
+
+        submitBtn.disabled = true;
+        loading.style.display = 'block';
+        resultArea.style.display = 'none';
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('custom_rules', customRulesText);
+        if (manualFile) formData.append('manual', manualFile);
+
+        try {
+            const response = await fetch('http://127.0.0.1:8000/api/inspect-drawing', {
+                method: 'POST', body: formData
+            });
+
+            if (!response.ok) throw new Error('サーバーエラーが発生しました');
+
+            const resultJson = await response.json();
+            const data = resultJson.data;
+            const imageBase64 = resultJson.image_base64;
+            currentPdfBase64 = resultJson.pdf_base64;
+
+            const updateBox = (id, info) => {
+                const box = document.getElementById(id);
+                box.className = `result-box ${info.status.toLowerCase()}`;
+                box.querySelector('.status').textContent = `[${info.status}]`;
+                box.querySelector('.details').textContent = info.details;
+                
+                const adviceBox = box.querySelector('.advice-box');
+                if (info.status === "NG" && info.advice) {
+                    // advice部分のテキストのみ書き換え（ボタン等は残す）
+                    const textSpan = adviceBox.querySelector('.text');
+                    if(textSpan) textSpan.textContent = info.advice;
+                    adviceBox.style.display = 'block';
+                } else if (info.status === "OK") {
+                    adviceBox.style.display = 'none';
+                }
+            };
+            updateBox('title-block-result', data.title_block);
+            updateBox('dimensions-result', data.dimensions);
+
+            const overall = document.getElementById('overall-result');
+            overall.textContent = `総合判定: ${data.overall_result}`;
+            overall.className = `overall ${data.overall_result === '合格' ? 'pass' : 'fail'}`;
+
+            document.getElementById('drawing-preview').src = 'data:image/png;base64,' + imageBase64;
+
+            const drawBox = (box2d, label) => {
+                if (box2d && box2d.length === 4) {
+                    const [ymin, xmin, ymax, xmax] = box2d;
+                    const box = document.createElement('div');
+                    box.className = 'error-box';
+                    box.style.top = (ymin / 10) + '%';
+                    box.style.left = (xmin / 10) + '%';
+                    box.style.height = ((ymax - ymin) / 10) + '%';
+                    box.style.width = ((xmax - xmin) / 10) + '%';
+                    const labelDiv = document.createElement('div');
+                    labelDiv.className = 'error-label';
+                    labelDiv.textContent = label;
+                    box.appendChild(labelDiv);
+                    imageWrapper.appendChild(box);
+                }
+            };
+            if (data.title_block.status === "NG") drawBox(data.title_block.box_2d, "表題欄エラー");
+            if (data.dimensions.status === "NG") drawBox(data.dimensions.box_2d, "寸法エラー");
+
+            downloadBtn.style.display = 'block';
+            resultArea.style.display = 'block';
+
+        } catch (error) {
+            alert('エラー: ' + error.message);
+        } finally {
+            submitBtn.disabled = false;
+            loading.style.display = 'none';
+        }
+    });
+
+    document.getElementById('download-btn').addEventListener('click', () => {
+        if (!currentPdfBase64) return;
+        const byteCharacters = atob(currentPdfBase64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'application/pdf' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'inspected_drawing.pdf';
+        link.click();
+    });
+</script>
+
+</body>
+</html>
